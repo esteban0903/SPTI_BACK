@@ -2,6 +2,9 @@ package co.edu.eci.blueprints.auth;
 
 import co.edu.eci.blueprints.security.InMemoryUserService;
 import co.edu.eci.blueprints.security.RsaKeyProperties;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.web.bind.annotation.*;
@@ -25,7 +28,9 @@ public class AuthController {
 
     public record LoginRequest(String username, String password) {}
     public record TokenResponse(String access_token, String token_type, long expires_in) {}
-
+    @Operation(summary = "Login de usuario", description = "Recibe credenciales y retorna un JWT")
+    @ApiResponse(responseCode = "200", description = "Login exitoso, retorna el token")
+    @ApiResponse(responseCode = "401", description = "Credenciales inválidas")
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest req) {
         if (!userService.isValid(req.username(), req.password())) {

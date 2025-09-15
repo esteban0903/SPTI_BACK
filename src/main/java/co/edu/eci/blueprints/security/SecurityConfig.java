@@ -22,12 +22,16 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/auth/login").permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                .requestMatchers("/api/**").hasAnyAuthority("SCOPE_blueprints.read", "SCOPE_blueprints.write")
-                .anyRequest().authenticated()
-            )
+                .authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/actuator/health", "/auth/login").permitAll()
+                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                    // GET
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/blueprints/**").hasAuthority("SCOPE_blueprints.read")
+                    // POST-PUT
+                    .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/blueprints").hasAuthority("SCOPE_blueprints.write")
+                    .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/v1/blueprints/**").hasAuthority("SCOPE_blueprints.write")
+                    .anyRequest().authenticated()
+                )
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
         return http.build();
     }
