@@ -1,0 +1,12 @@
+### Login (obtener token)
+POST http://localhost:8080/auth/login
+Content-Type: application/json
+
+{
+  "username": "student",
+  "password": "student123"
+}
+
+### Listar blueprints (usar token)
+GET http://localhost:8080/api/blueprints
+Authorization: Bearer {{access_token}}

@@ -1,0 +1,16 @@
+server:
+  port: 8080
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: https://auth.example.com/.well-known/jwks.json
+  main:
+    allow-bean-definition-overriding: true
+
+blueprints:
+  security:
+    issuer: "https://decsis-eci/blueprints"
+    token-ttl-seconds: 3600
