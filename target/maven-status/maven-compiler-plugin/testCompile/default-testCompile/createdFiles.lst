@@ -1,1 +1,9 @@
 co\edu\eci\blueprints\AuthIntegrationTest.class
+co\edu\eci\blueprints\persistence\BlueprintPersistenceExceptionTest.class
+co\edu\eci\blueprints\persistence\PostgresBlueprintPersistenceTest.class
+co\edu\eci\blueprints\filters\RedundancyFilterTest.class
+co\edu\eci\blueprints\services\BlueprintsServicesTest.class
+co\edu\eci\blueprints\filters\IdentityFilterTest.class
+co\edu\eci\blueprints\filters\UndersamplingFilterTest.class
+co\edu\eci\blueprints\persistence\BlueprintNotFoundExceptionTest.class
+co\edu\eci\blueprints\BlueprintsSmokeTest.class

@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  profiles:
+    active: identity
   security:
     oauth2:
       resourceserver:
