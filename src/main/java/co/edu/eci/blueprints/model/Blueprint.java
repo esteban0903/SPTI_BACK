@@ -27,11 +27,21 @@ public class Blueprint {
         if (pts != null) points.addAll(pts);
     }
 
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
     public String getAuthor() { return author; }
     public String getName() { return name; }
     public List<Point> getPoints() { return Collections.unmodifiableList(points); }
 
     public void addPoint(Point p) { points.add(p); }
+    
+    // Method to clear and replace all points (needed for updates)
+    public void replacePoints(List<Point> newPoints) {
+        points.clear();
+        if (newPoints != null) {
+            points.addAll(newPoints);
+        }
+    }
 
     @Override
     public boolean equals(Object o) {

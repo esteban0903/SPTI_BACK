@@ -94,4 +94,49 @@ public class PostgresBlueprintPersistence implements BlueprintPersistence {
         bp.addPoint(new Point(x, y));
         blueprintRepository.save(bp); // Guardar los cambios en la base de datos
     }
+
+    /**
+     * Actualiza un blueprint existente.
+     * @param originalAuthor Autor original del blueprint
+     * @param originalName Nombre original del blueprint
+     * @param updatedBlueprint Blueprint con los nuevos datos
+     * @throws BlueprintNotFoundException si el blueprint original no existe
+     * @throws BlueprintPersistenceException si hay problemas de persistencia
+     */
+    @Override
+    public void updateBlueprint(String originalAuthor, String originalName, Blueprint updatedBlueprint) 
+            throws BlueprintNotFoundException, BlueprintPersistenceException {
+        // Verificar que el blueprint original existe
+        Blueprint originalBp = getBlueprint(originalAuthor, originalName);
+        
+        // Si cambió el autor o nombre, verificar que no existe ya uno con el nuevo nombre
+        if (!originalAuthor.equals(updatedBlueprint.getAuthor()) || 
+            !originalName.equals(updatedBlueprint.getName())) {
+            
+            if (blueprintRepository.findByAuthorAndName(updatedBlueprint.getAuthor(), updatedBlueprint.getName()) != null) {
+                throw new BlueprintPersistenceException("Blueprint already exists: " + 
+                    updatedBlueprint.getAuthor() + "/" + updatedBlueprint.getName());
+            }
+            
+            // Eliminar el original y crear el nuevo
+            blueprintRepository.delete(originalBp);
+            blueprintRepository.save(updatedBlueprint);
+        } else {
+            // Solo cambios en datos (puntos), actualizar in-place manteniendo el ID
+            originalBp.replacePoints(updatedBlueprint.getPoints());
+            blueprintRepository.save(originalBp); // Update existing entity
+        }
+    }
+
+    /**
+     * Elimina un blueprint.
+     * @param author Autor del blueprint
+     * @param name Nombre del blueprint
+     * @throws BlueprintNotFoundException si el blueprint no existe
+     */
+    @Override
+    public void deleteBlueprint(String author, String name) throws BlueprintNotFoundException {
+        Blueprint bp = getBlueprint(author, name);
+        blueprintRepository.delete(bp);
+    }
 }

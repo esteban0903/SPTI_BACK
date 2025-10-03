@@ -8,5 +8,46 @@ Content-Type: application/json
 }
 
 ### Listar blueprints (usar token)
-GET http://localhost:8080/api/blueprints
+GET http://localhost:8080/api/v1/blueprints
+Authorization: Bearer {{access_token}}
+
+### Obtener blueprints por autor
+GET http://localhost:8080/api/v1/blueprints/JohnConnor
+Authorization: Bearer {{access_token}}
+
+### Obtener blueprint específico
+GET http://localhost:8080/api/v1/blueprints/JohnConnor/MyHouse
+Authorization: Bearer {{access_token}}
+
+### Crear nuevo blueprint
+POST http://localhost:8080/api/v1/blueprints
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "author": "TestAuthor",
+  "name": "TestBlueprint",
+  "points": [
+    {"x": 10, "y": 20},
+    {"x": 30, "y": 40}
+  ]
+}
+
+### Actualizar blueprint existente
+PUT http://localhost:8080/api/v1/blueprints/TestAuthor/TestBlueprint
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "author": "TestAuthor",
+  "name": "UpdatedBlueprint",
+  "points": [
+    {"x": 15, "y": 25},
+    {"x": 35, "y": 45},
+    {"x": 50, "y": 60}
+  ]
+}
+
+### Eliminar blueprint
+DELETE http://localhost:8080/api/v1/blueprints/TestAuthor/UpdatedBlueprint
 Authorization: Bearer {{access_token}}

@@ -1,4 +1,5 @@
 package co.edu.eci.blueprints.controllers;
+
 import java.util.Set;
 
 import org.springframework.http.HttpStatus;
@@ -26,14 +27,13 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
 @RestController
-@RequestMapping("/api/v1/blueprints")
+@RequestMapping("/api/v1/public/blueprints")
 @CrossOrigin(origins = "http://localhost:5173")
-
 /**
- * Controlador REST para la gestión de planos (blueprints).
- * Proporciona endpoints para consultar, crear y modificar planos.
+ * Controlador REST público para la gestión de planos (blueprints).
+ * Proporciona endpoints sin autenticación para desarrollo y testing.
  */
-public class BlueprintsAPIController {
+public class PublicBlueprintsAPIController {
 
     /**
      * Servicio principal para operaciones sobre blueprints.
@@ -44,57 +44,58 @@ public class BlueprintsAPIController {
      * Constructor con inyección de dependencias.
      * @param services Servicio de blueprints
      */
-    public BlueprintsAPIController(BlueprintsServices services) { this.services = services; }
+    public PublicBlueprintsAPIController(BlueprintsServices services) { 
+        this.services = services; 
+    }
 
     /**
      * Obtiene todos los planos almacenados.
      * @return ResponseEntity con el listado de blueprints y estado 200.
      */
-    @Operation(summary = "Obtiene todos los planos", description = "Devuelve todos los blueprints almacenados")
+    @Operation(
+        summary = "Obtiene todos los planos",
+        description = "Devuelve la lista completa de blueprints almacenados en el sistema"
+    )
     @ApiResponse(
         responseCode = "200",
-        description = "Consulta exitosa",
+        description = "Lista de planos",
         content = @Content(
             mediaType = "application/json",
-            schema = @Schema(implementation = co.edu.eci.blueprints.model.Blueprint.class)
+            schema = @Schema(implementation = Blueprint.class)
         )
     )
     @GetMapping
-    public ResponseEntity<ApiResponseDTO<Set<Blueprint>>> getAll() {
-        Set<Blueprint> blueprints = services.getAllBlueprints();
-        var response = new ApiResponseDTO<>(200, "execute ok", blueprints);
+    public ResponseEntity<ApiResponseDTO<Set<Blueprint>>> blueprints() {
+        Set<Blueprint> data = services.getAllBlueprints();
+        ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(200, "execute ok", data);
         return ResponseEntity.ok(response);
     }
 
     /**
-     * Obtiene los planos de un autor específico.
+     * Obtiene todos los planos de un autor específico.
      * @param author Nombre del autor
-     * @return ResponseEntity con el listado de planos o error 404 si no existe el autor.
+     * @return ResponseEntity con los planos del autor y estado 200.
      */
     @Operation(
-    summary = "Obtiene los planos por autor",
-    description = "Devuelve todos los blueprints de un autor específico"
+        summary = "Obtiene los planos de un autor",
+        description = "Devuelve todos los blueprints creados por un autor específico"
     )
     @ApiResponse(
         responseCode = "200",
-        description = "Consulta exitosa",
+        description = "Lista de planos del autor",
         content = @Content(
             mediaType = "application/json",
-            schema = @Schema(implementation = co.edu.eci.blueprints.model.Blueprint.class)
+            schema = @Schema(implementation = Blueprint.class)
         )
     )
-    @ApiResponse(
-        responseCode = "404",
-        description = "Autor no encontrado"
-    )
     @GetMapping("/{author}")
-    public ResponseEntity<?> byAuthor(@PathVariable String author) {
+    public ResponseEntity<ApiResponseDTO<Set<Blueprint>>> blueprintsByAuthor(@PathVariable String author) {
         try {
-            Set<Blueprint> blueprints = services.getBlueprintsByAuthor(author);
-            ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(200, "execute ok", blueprints);
+            Set<Blueprint> data = services.getBlueprintsByAuthor(author);
+            ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(200, "execute ok", data);
             return ResponseEntity.ok(response);
         } catch (BlueprintNotFoundException e) {
-            ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(404, e.getMessage(), null);
+            ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(404, "Author not found", null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
     }
@@ -103,18 +104,18 @@ public class BlueprintsAPIController {
      * Obtiene un plano específico por autor y nombre.
      * @param author Nombre del autor
      * @param bpname Nombre del plano
-     * @return ResponseEntity con el plano o error 404 si no existe.
+     * @return ResponseEntity con el plano solicitado y estado 200, o 404 si no se encuentra.
      */
     @Operation(
-        summary = "Obtiene un plano por autor y nombre",
-        description = "Devuelve un blueprint específico dado el autor y el nombre"
+        summary = "Obtiene un plano específico",
+        description = "Devuelve un blueprint específico identificado por autor y nombre"
     )
     @ApiResponse(
         responseCode = "200",
-        description = "Consulta exitosa",
+        description = "Plano encontrado",
         content = @Content(
             mediaType = "application/json",
-            schema = @Schema(implementation = co.edu.eci.blueprints.model.Blueprint.class)
+            schema = @Schema(implementation = Blueprint.class)
         )
     )
     @ApiResponse(
@@ -147,7 +148,7 @@ public class BlueprintsAPIController {
         description = "Plano creado",
         content = @Content(
             mediaType = "application/json",
-            schema = @Schema(implementation = co.edu.eci.blueprints.model.Blueprint.class)
+            schema = @Schema(implementation = Blueprint.class)
         )
     )
     @ApiResponse(
@@ -168,42 +169,6 @@ public class BlueprintsAPIController {
     }
 
     /**
-     * Agrega un punto a un plano existente.
-     * @param author Nombre del autor
-     * @param bpname Nombre del plano
-     * @param p Punto a agregar
-     * @return ResponseEntity con estado 202 si se agrega, o 404 si no existe el plano.
-     */
-    @Operation(
-        summary = "Agrega un punto a un plano existente",
-        description = "Añade un nuevo punto a un blueprint específico"
-    )
-    @ApiResponse(
-        responseCode = "202",
-        description = "Punto agregado",
-        content = @Content(
-            mediaType = "application/json",
-            schema = @Schema(implementation = co.edu.eci.blueprints.model.Blueprint.class)
-        )
-    )
-    @ApiResponse(
-        responseCode = "404",
-        description = "Plano no encontrado"
-    )
-    @PutMapping("/{author}/{bpname}/points")
-    public ResponseEntity<?> addPoint(@PathVariable String author, @PathVariable String bpname,
-                                      @RequestBody Point p) {
-        try {
-            services.addPoint(author, bpname, p.x(), p.y());
-            ApiResponseDTO<Blueprint> response = new ApiResponseDTO(202, "point added", null);
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
-        } catch (BlueprintNotFoundException e) {
-            ApiResponseDTO<Blueprint> response = new ApiResponseDTO(404, e.getMessage() , null);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-        }
-    }
-
-    /**
      * Actualiza un plano existente.
      * @param author Autor original del plano
      * @param bpname Nombre original del plano
@@ -219,7 +184,7 @@ public class BlueprintsAPIController {
         description = "Plano actualizado",
         content = @Content(
             mediaType = "application/json",
-            schema = @Schema(implementation = co.edu.eci.blueprints.model.Blueprint.class)
+            schema = @Schema(implementation = Blueprint.class)
         )
     )
     @ApiResponse(
@@ -304,4 +269,24 @@ public class BlueprintsAPIController {
             @NotBlank String name,
             @Valid java.util.List<Point> points
     ) { }
+
+    /**
+     * DTO genérico para respuestas de la API.
+     * @param <T> Tipo de datos contenidos en la respuesta
+     */
+    public static class ApiResponseDTO<T> {
+        private final int statusCode;
+        private final String message;
+        private final T data;
+
+        public ApiResponseDTO(int statusCode, String message, T data) {
+            this.statusCode = statusCode;
+            this.message = message;
+            this.data = data;
+        }
+
+        public int getStatusCode() { return statusCode; }
+        public String getMessage() { return message; }
+        public T getData() { return data; }
+    }
 }

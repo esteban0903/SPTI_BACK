@@ -50,4 +50,23 @@ public interface BlueprintPersistence {
      * @throws BlueprintNotFoundException si el blueprint no existe
      */
     void addPoint(String author, String name, int x, int y) throws BlueprintNotFoundException;
+
+    /**
+     * Actualiza un blueprint existente.
+     * @param originalAuthor Autor original del blueprint
+     * @param originalName Nombre original del blueprint
+     * @param updatedBlueprint Blueprint con los nuevos datos
+     * @throws BlueprintNotFoundException si el blueprint original no existe
+     * @throws BlueprintPersistenceException si hay problemas de persistencia
+     */
+    void updateBlueprint(String originalAuthor, String originalName, Blueprint updatedBlueprint) 
+        throws BlueprintNotFoundException, BlueprintPersistenceException;
+
+    /**
+     * Elimina un blueprint.
+     * @param author Autor del blueprint
+     * @param name Nombre del blueprint
+     * @throws BlueprintNotFoundException si el blueprint no existe
+     */
+    void deleteBlueprint(String author, String name) throws BlueprintNotFoundException;
 }
