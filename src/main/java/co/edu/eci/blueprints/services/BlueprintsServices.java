@@ -93,4 +93,27 @@ public class BlueprintsServices {
     public void addPoint(String author, String name, int x, int y) throws BlueprintNotFoundException {
         persistence.addPoint(author, name, x, y);
     }
+
+    /**
+     * Actualiza un blueprint existente.
+     * @param originalAuthor Autor original del blueprint
+     * @param originalName Nombre original del blueprint
+     * @param updatedBlueprint Blueprint con los nuevos datos
+     * @throws BlueprintNotFoundException si el blueprint original no existe
+     * @throws BlueprintPersistenceException si hay problemas de persistencia
+     */
+    public void updateBlueprint(String originalAuthor, String originalName, Blueprint updatedBlueprint) 
+            throws BlueprintNotFoundException, BlueprintPersistenceException {
+        persistence.updateBlueprint(originalAuthor, originalName, updatedBlueprint);
+    }
+
+    /**
+     * Elimina un blueprint del sistema.
+     * @param author Autor del blueprint
+     * @param name Nombre del blueprint
+     * @throws BlueprintNotFoundException si el blueprint no existe
+     */
+    public void deleteBlueprint(String author, String name) throws BlueprintNotFoundException {
+        persistence.deleteBlueprint(author, name);
+    }
 }
