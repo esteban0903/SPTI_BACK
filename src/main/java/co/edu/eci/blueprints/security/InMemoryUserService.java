@@ -2,6 +2,8 @@ package co.edu.eci.blueprints.security;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.core.env.Environment;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,15 +21,24 @@ public class InMemoryUserService {
      * If none are provided, the internal map will be empty and authentication
      * must be provided by other means in production.
      */
-    public InMemoryUserService(PasswordEncoder encoder) {
+    public InMemoryUserService(PasswordEncoder encoder, Environment env) {
         this.encoder = encoder;
 
         String studentPwd = System.getenv("STUDENT_PASSWORD");
         String assistantPwd = System.getenv("ASSISTANT_PASSWORD");
 
+        // If no env vars provided, allow a safe dev fallback when running with
+        // specific Spring profiles (e.g., 'identity' or 'dev') used in tests.
         if (studentPwd == null && assistantPwd == null) {
-            // No credentials provided via environment; keep empty map to avoid
-            // hard-coded or compromised passwords in source control.
+            String[] profiles = env.getActiveProfiles();
+            if (Arrays.asList(profiles).contains("identity") || Arrays.asList(profiles).contains("dev")) {
+                studentPwd = "student123";
+                assistantPwd = "assistant123";
+            }
+        }
+
+        if (studentPwd == null && assistantPwd == null) {
+            // No credentials provided; keep empty map to avoid hard-coded secrets.
             this.users = Collections.emptyMap();
         } else {
             Map<String, String> m = new HashMap<>();
