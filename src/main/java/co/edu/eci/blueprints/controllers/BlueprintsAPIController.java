@@ -39,6 +39,7 @@ public class BlueprintsAPIController {
      * Servicio principal para operaciones sobre blueprints.
      */
     private final BlueprintsServices services;
+    private static final String EXECUTE_OK = "execute ok";
 
     /**
      * Constructor con inyección de dependencias.
@@ -62,7 +63,7 @@ public class BlueprintsAPIController {
     @GetMapping
     public ResponseEntity<ApiResponseDTO<Set<Blueprint>>> getAll() {
         Set<Blueprint> blueprints = services.getAllBlueprints();
-        var response = new ApiResponseDTO<>(200, "execute ok", blueprints);
+    var response = new ApiResponseDTO<>(200, EXECUTE_OK, blueprints);
         return ResponseEntity.ok(response);
     }
 
@@ -91,7 +92,7 @@ public class BlueprintsAPIController {
     public ResponseEntity<?> byAuthor(@PathVariable String author) {
         try {
             Set<Blueprint> blueprints = services.getBlueprintsByAuthor(author);
-            ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(200, "execute ok", blueprints);
+            ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(200, EXECUTE_OK, blueprints);
             return ResponseEntity.ok(response);
         } catch (BlueprintNotFoundException e) {
             ApiResponseDTO<Set<Blueprint>> response = new ApiResponseDTO<>(404, e.getMessage(), null);
@@ -125,7 +126,7 @@ public class BlueprintsAPIController {
     public ResponseEntity<ApiResponseDTO<Blueprint>> byAuthorAndName(@PathVariable String author, @PathVariable String bpname) {
         try {
             Blueprint blueprint = services.getBlueprint(author, bpname);
-            ApiResponseDTO<Blueprint> response = new ApiResponseDTO<>(200, "execute ok", blueprint);
+            ApiResponseDTO<Blueprint> response = new ApiResponseDTO<>(200, EXECUTE_OK, blueprint);
             return ResponseEntity.ok(response);
         } catch (BlueprintNotFoundException e) {
             ApiResponseDTO<Blueprint> response = new ApiResponseDTO<>(404, e.getMessage(), null);
@@ -195,10 +196,10 @@ public class BlueprintsAPIController {
                                       @RequestBody Point p) {
         try {
             services.addPoint(author, bpname, p.x(), p.y());
-            ApiResponseDTO<Blueprint> response = new ApiResponseDTO(202, "point added", null);
+            ApiResponseDTO<Blueprint> response = new ApiResponseDTO<>(202, "point added", null);
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
         } catch (BlueprintNotFoundException e) {
-            ApiResponseDTO<Blueprint> response = new ApiResponseDTO(404, e.getMessage() , null);
+            ApiResponseDTO<Blueprint> response = new ApiResponseDTO<>(404, e.getMessage() , null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
     }

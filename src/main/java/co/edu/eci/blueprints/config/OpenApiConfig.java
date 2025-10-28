@@ -12,14 +12,15 @@ import org.springframework.context.annotation.Configuration;
 public class OpenApiConfig {
     @Bean
     public OpenAPI api() {
+        final String BEARER = "bearer-jwt";
         return new OpenAPI()
           .info(new Info().title("BluePrints API")
             .version("2.0")
             .description("Parte 2 — Seguridad con JWT (OAuth 2.0)"))
-          .addSecurityItem(new SecurityRequirement().addList("bearer-jwt"))
-          .components(new Components().addSecuritySchemes("bearer-jwt",
+          .addSecurityItem(new SecurityRequirement().addList(BEARER))
+          .components(new Components().addSecuritySchemes(BEARER,
             new SecurityScheme()
-              .name("bearer-jwt")
+              .name(BEARER)
               .type(SecurityScheme.Type.HTTP)
               .scheme("bearer")
               .bearerFormat("JWT")));
