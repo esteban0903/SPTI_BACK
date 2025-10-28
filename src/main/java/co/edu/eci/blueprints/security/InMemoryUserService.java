@@ -24,21 +24,15 @@ public class InMemoryUserService {
     public InMemoryUserService(PasswordEncoder encoder, Environment env) {
         this.encoder = encoder;
 
-        String studentPwd = System.getenv("STUDENT_PASSWORD");
-        String assistantPwd = System.getenv("ASSISTANT_PASSWORD");
-
-        // If no env vars provided, allow a safe dev fallback when running with
-        // specific Spring profiles (e.g., 'identity' or 'dev') used in tests.
-        if (studentPwd == null && assistantPwd == null) {
-            String[] profiles = env.getActiveProfiles();
-            if (Arrays.asList(profiles).contains("identity") || Arrays.asList(profiles).contains("dev")) {
-                studentPwd = "student123";
-                assistantPwd = "assistant123";
-            }
-        }
+        // Prefer values from Spring Environment (includes env vars and properties).
+        String studentPwd = env.getProperty("STUDENT_PASSWORD");
+        String assistantPwd = env.getProperty("ASSISTANT_PASSWORD");
 
         if (studentPwd == null && assistantPwd == null) {
             // No credentials provided; keep empty map to avoid hard-coded secrets.
+            // For tests/local dev, provide these values via a profile-specific
+            // properties file (e.g. src/test/resources/application-identity.properties)
+            // or via environment variables. Do NOT hard-code passwords here.
             this.users = Collections.emptyMap();
         } else {
             Map<String, String> m = new HashMap<>();
