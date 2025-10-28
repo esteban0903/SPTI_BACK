@@ -26,7 +26,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
 @RestController
-@RequestMapping("/api/v1/blueprints")
+@RequestMapping({"/api/v1/blueprints", "/api/blueprints"})
 @CrossOrigin(origins = "http://localhost:5173")
 
 /**
