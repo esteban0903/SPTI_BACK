@@ -26,4 +26,9 @@ COPY --from=build /app/target/*.jar ./app.jar
 EXPOSE 8080
 
 # Adjust JVM options as needed
+# Create a non-root user and ensure app directory is owned by it
+RUN addgroup --system app && adduser --system --ingroup app app
+RUN chown -R app:app /app
+USER app
+
 ENTRYPOINT ["java","-jar","/app/app.jar"]
