@@ -14,25 +14,51 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+import java.util.List;
+
 @Configuration
 @EnableConfigurationProperties(RsaKeyProperties.class)
 public class SecurityConfig {
 
     @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        config.setAllowedOrigins(List.of(
+                "https://thankful-rock-017dc4110.3.azurestaticapps.net"
+        ));
+
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/actuator/health", "/auth/login").permitAll()
-                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                    // GET
-                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/blueprints/**").hasAuthority("SCOPE_blueprints.read")
-                    // POST-PUT
-                    .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/blueprints").hasAuthority("SCOPE_blueprints.write")
-                    .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/v1/blueprints/**").hasAuthority("SCOPE_blueprints.write")
-                    .anyRequest().authenticated()
-                )
+            .cors(Customizer.withDefaults())   // 👈 HABILITAR CORS
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/health", "/auth/login").permitAll()
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/blueprints/**")
+                    .hasAuthority("SCOPE_blueprints.read")
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/blueprints")
+                    .hasAuthority("SCOPE_blueprints.write")
+                .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/v1/blueprints/**")
+                    .hasAuthority("SCOPE_blueprints.write")
+                .anyRequest().authenticated()
+            )
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
         return http.build();
     }
 
