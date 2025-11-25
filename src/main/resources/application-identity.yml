@@ -1,0 +1,32 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  main:
+    allow-bean-definition-overriding: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: https://auth.example.com/.well-known/jwks.json
+
+blueprints:
+  security:
+    issuer: "https://decsis-eci/blueprints"
+    token-ttl-seconds: ${TOKEN_TTL_SECONDS}
+    student-password: ${STUDENT_PASSWORD}
+    assistant-password: ${ASSISTANT_PASSWORD}
