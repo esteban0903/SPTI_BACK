@@ -87,11 +87,10 @@ jobs:
           fi
 
       - name: Debug: show pull_docker outputs
+        continue-on-error: true
         run: |
           echo "Step outputs (pull_docker):"
-          # This will be printed but secrets are masked
-          echo "pulled: ${ { steps.pull_docker.outputs.pulled } }" || true
-        continue-on-error: true
+          echo "pulled: ${{ steps.pull_docker.outputs.pulled }}"
 
       - name: Run ZAP via Docker if available
         if: steps.pull_docker.outputs.pulled == 'true'
