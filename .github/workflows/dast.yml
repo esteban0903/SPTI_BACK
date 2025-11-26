@@ -75,7 +75,7 @@ jobs:
             echo "pulled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Debug: show pull_docker outputs
+      - name: "Debug: show pull_docker outputs"
         continue-on-error: true
         run: |
           echo "Step outputs (pull_docker):"
@@ -89,7 +89,7 @@ jobs:
           docker run --rm -v "$(pwd)":/zap/wrk/:rw -t "$ZAP_IMAGE" \
             zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q || true
 
-      - name: Fallback: Download and run standalone ZAP (if Docker pull not available)
+      - name: "Fallback: Download and run standalone ZAP (if Docker pull not available)"
         if: ${{ steps.pull_docker.outputs.pulled == 'false' }}
         run: |
           set -euo pipefail
