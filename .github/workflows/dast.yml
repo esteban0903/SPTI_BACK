@@ -1,6 +1,6 @@
-# Dynamic Application Security Testing (DAST) using OWASP ZAP (Docker fallback)
-# Uses the secret DAST_TARGET_URL to determine the target to scan.
-# Optionally uses DOCKERHUB_USERNAME and DOCKERHUB_TOKEN if Docker Hub requires auth.
+# Dynamic Application Security Testing (DAST) using OWASP ZAP (with Docker Hub login)
+# Reads TARGET_URL from secret DAST_TARGET_URL and uses DOCKERHUB_USERNAME/DOCKERHUB_TOKEN to auth to Docker Hub.
+# Place this file at .github/workflows/dast.yml
 on:
   push:
     branches: [ main ]
@@ -35,61 +35,56 @@ jobs:
             echo "Waiting for target... ($i/10)"
             sleep 3
           done
-          echo "Target ${TARGET_URL} not reachable"
+          echo "Target not reachable (after 10 attempts)"
           exit 1
 
-      - name: Pull ZAP image (try GHCR then Docker Hub, optional login)
+      - name: Pull ZAP image (login to Docker Hub if creds present)
+        shell: bash
         run: |
           set -euo pipefail
-          IMAGES="ghcr.io/zaproxy/zap2docker-stable:latest owasp/zap2docker-stable:latest"
-          export ZAP_IMAGE=""
-          for IMG in $IMAGES; do
-            echo "Trying docker pull $IMG ..."
-            if docker pull "$IMG"; then
-              export ZAP_IMAGE="$IMG"
-              echo "Pulled $IMG"
-              break
-            else
-              echo "Failed to pull $IMG"
-            fi
-          done
 
-          # If pull failed and DockerHub creds are provided, try login then pull again
-          if [ -z "$ZAP_IMAGE" ] && [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "Attempting Docker Hub login and retry..."
+          # Preferred docker image (Docker Hub)
+          DOCKER_IMAGE="owasp/zap2docker-stable:latest"
+          GHCR_IMAGE="ghcr.io/zaproxy/zap2docker-stable:latest"
+          ZAP_IMAGE=""
+
+          # Login to Docker Hub if credentials were provided
+          if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            echo "Logging in to Docker Hub (credentials supplied)..."
             echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-            for IMG in $IMAGES; do
-              echo "Retrying docker pull $IMG ..."
-              if docker pull "$IMG"; then
-                export ZAP_IMAGE="$IMG"
-                echo "Pulled $IMG after login"
-                break
-              else
-                echo "Failed to pull $IMG even after login"
-              fi
-            done
+          else
+            echo "No Docker Hub credentials provided; attempting anonymous pull (may fail due to rate limits)."
           fi
 
-          if [ -z "$ZAP_IMAGE" ]; then
-            echo "ERROR: Could not pull any ZAP image (tried: $IMAGES)."
-            echo "If you are hitting Docker Hub rate limits, create DOCKERHUB_USERNAME & DOCKERHUB_TOKEN secrets or use a self-hosted runner."
-            exit 1
+          echo "Trying docker pull ${DOCKER_IMAGE} ..."
+          if docker pull "${DOCKER_IMAGE}"; then
+            ZAP_IMAGE="${DOCKER_IMAGE}"
+            echo "Pulled ${DOCKER_IMAGE}"
+          else
+            echo "Failed to pull ${DOCKER_IMAGE}, trying GHCR fallback ${GHCR_IMAGE} ..."
+            if docker pull "${GHCR_IMAGE}"; then
+              ZAP_IMAGE="${GHCR_IMAGE}"
+              echo "Pulled ${GHCR_IMAGE}"
+            else
+              echo "ERROR: Could not pull ZAP image from Docker Hub nor GHCR."
+              echo "If you hit Docker Hub rate limits, add DOCKERHUB_USERNAME & DOCKERHUB_TOKEN secrets or use a self-hosted runner."
+              exit 1
+            fi
           fi
 
-          echo "ZAP image to use: $ZAP_IMAGE"
-          echo "ZAP_IMAGE=$ZAP_IMAGE" >> $GITHUB_ENV
+          echo "ZAP_IMAGE=${ZAP_IMAGE}" >> $GITHUB_ENV
 
       - name: Run OWASP ZAP baseline scan (container)
         run: |
           set -euo pipefail
-          echo "Running ZAP baseline with image: $ZAP_IMAGE"
+          echo "Running ZAP baseline with image: $ZAP_IMAGE (output -> zap_baseline_report.html/json)"
           docker run --rm -v "$(pwd)":/zap/wrk/:rw -t "$ZAP_IMAGE" \
             zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q || true
-          # allow failure of zap command itself (we'll check reports), but continue to upload artifacts
+          # We allow zap script to return non-zero; we'll inspect reports below.
 
-      - name: Locate ZAP reports (if any)
+      - name: Locate ZAP reports (debug)
         run: |
-          echo "Searching for ZAP report files..."
+          echo "Report files found:"
           find . -type f \( -iname '*zap*report*.html' -o -iname '*zap*report*.json' -o -iname '*baseline*.html' -o -iname '*baseline*.json' \) -maxdepth 6 -print || true
 
       - name: Upload ZAP HTML report(s)
@@ -114,7 +109,7 @@ jobs:
           json_file=$(find . -type f \( -iname '*zap*report*.json' -o -iname '*baseline*.json' \) -print -quit || true)
           if [ -n "$json_file" ] && [ -f "$json_file" ]; then
             echo "Using JSON report: $json_file"
-            high_count=$(jq '[.site[]?.alerts[]? | select((.risk // "") == "High" or (.risk // "") == "Critical")] | length' "$json_file" || echo "0")
+            high_count=$(jq '[.site[]?.alerts[]? | select((.risk // "") == "High" or (.risk // "") == "Critical")] | length' "$json_file" 2>/dev/null || echo "0")
             echo "High/Critical alerts: $high_count"
             if [ "$high_count" -gt 0 ]; then
               echo "Failing build because of High/Critical DAST alerts"
