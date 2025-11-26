@@ -95,8 +95,9 @@ jobs:
           set -euo pipefail
           echo "Docker image not available, attempting standalone ZAP download + baseline run"
 
-          ZAP_VERSION="2.13.0"
-          ZAP_TAR="ZAP_${ZAP_VERSION//./_}_unix.tar.gz"
+          # Usa la versión que quieras: 2.13.0 o, mejor, 2.15.0 (último release estable)
+          ZAP_VERSION="2.15.0"
+          ZAP_TAR="ZAP_${ZAP_VERSION}_Linux.tar.gz"
           REL_URL="https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/${ZAP_TAR}"
 
           echo "Downloading ZAP from: $REL_URL"
@@ -132,6 +133,7 @@ jobs:
           chmod +x zap-baseline.py
 
           python3 zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -p ${ZAP_PORT} -q || true
+
 
       - name: Locate ZAP reports
         run: |
