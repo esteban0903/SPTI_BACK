@@ -1,6 +1,6 @@
-# Dynamic Application Security Testing (DAST) using OWASP ZAP (with Docker Hub login)
-# Reads TARGET_URL from secret DAST_TARGET_URL and uses DOCKERHUB_USERNAME/DOCKERHUB_TOKEN to auth to Docker Hub.
-# Place this file at .github/workflows/dast.yml
+# DAST workflow: intenta docker (con login si proporcionas DOCKERHUB_USERNAME/DOCKERHUB_TOKEN)
+# y si falla hace fallback descargando ZAP standalone desde GitHub Releases y ejecutando el baseline.
+# Coloca este archivo en .github/workflows/dast.yml
 on:
   push:
     branches: [ main ]
@@ -19,10 +19,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install tools (jq, curl)
+      - name: Install prerequisites
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y jq curl
+          sudo apt-get install -y jq curl wget unzip python3 python3-pip openjdk-11-jre-headless
 
       - name: Verify target is reachable
         run: |
@@ -38,53 +38,110 @@ jobs:
           echo "Target not reachable (after 10 attempts)"
           exit 1
 
-      - name: Pull ZAP image (login to Docker Hub if creds present)
-        shell: bash
+      - name: Try Docker pull (with optional login)
+        id: pull_docker
         run: |
           set -euo pipefail
-
-          # Preferred docker image (Docker Hub)
           DOCKER_IMAGE="owasp/zap2docker-stable:latest"
           GHCR_IMAGE="ghcr.io/zaproxy/zap2docker-stable:latest"
           ZAP_IMAGE=""
 
-          # Login to Docker Hub if credentials were provided
+          # Try login to Docker Hub if credentials provided
           if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "Logging in to Docker Hub (credentials supplied)..."
-            echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            echo "Logging in to Docker Hub..."
+            echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin || true
           else
             echo "No Docker Hub credentials provided; attempting anonymous pull (may fail due to rate limits)."
           fi
 
-          echo "Trying docker pull ${DOCKER_IMAGE} ..."
-          if docker pull "${DOCKER_IMAGE}"; then
+          echo "Attempting to pull ${DOCKER_IMAGE} ..."
+          if docker pull "${DOCKER_IMAGE}" >/dev/null 2>&1; then
             ZAP_IMAGE="${DOCKER_IMAGE}"
             echo "Pulled ${DOCKER_IMAGE}"
           else
-            echo "Failed to pull ${DOCKER_IMAGE}, trying GHCR fallback ${GHCR_IMAGE} ..."
-            if docker pull "${GHCR_IMAGE}"; then
+            echo "Failed to pull ${DOCKER_IMAGE}, trying GHCR fallback..."
+            if docker pull "${GHCR_IMAGE}" >/dev/null 2>&1; then
               ZAP_IMAGE="${GHCR_IMAGE}"
               echo "Pulled ${GHCR_IMAGE}"
             else
-              echo "ERROR: Could not pull ZAP image from Docker Hub nor GHCR."
-              echo "If you hit Docker Hub rate limits, add DOCKERHUB_USERNAME & DOCKERHUB_TOKEN secrets or use a self-hosted runner."
-              exit 1
+              echo "Could not pull docker images (Docker Hub nor GHCR). Will fallback to standalone ZAP download."
             fi
           fi
 
-          echo "ZAP_IMAGE=${ZAP_IMAGE}" >> $GITHUB_ENV
+          if [ -n "${ZAP_IMAGE}" ]; then
+            echo "ZAP_IMAGE=${ZAP_IMAGE}" >> $GITHUB_ENV
+            echo "pulled=true" >> $GITHUB_OUTPUT || true
+          else
+            echo "pulled=false" >> $GITHUB_OUTPUT || true
+          fi
 
-      - name: Run OWASP ZAP baseline scan (container)
+      - name: Run ZAP via Docker if available
+        if: steps.pull_docker.outputs.pulled == 'true'
         run: |
           set -euo pipefail
-          echo "Running ZAP baseline with image: $ZAP_IMAGE (output -> zap_baseline_report.html/json)"
+          echo "Running ZAP baseline via Docker image: $ZAP_IMAGE"
           docker run --rm -v "$(pwd)":/zap/wrk/:rw -t "$ZAP_IMAGE" \
             zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q || true
-          # We allow zap script to return non-zero; we'll inspect reports below.
 
-      - name: Locate ZAP reports (debug)
+      - name: Fallback: Download and run standalone ZAP (if Docker pull not available)
+        if: steps.pull_docker.outputs.pulled == 'false'
         run: |
-          echo "Report files found:"
+          set -euo pipefail
+          echo "Docker image not available, attempting standalone ZAP download + baseline run"
+
+          # Choose a ZAP release version to download (adjust if needed)
+          ZAP_VERSION="2.13.0"
+          ZAP_TAR="ZAP_${ZAP_VERSION//./_}_unix.tar.gz"
+          # Release URL (may need version update in future)
+          REL_URL="https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/${ZAP_TAR}"
+
+          echo "Downloading ZAP from: $REL_URL"
+          if ! curl -sSfL "$REL_URL" -o "$ZAP_TAR"; then
+            echo "Failed to download ZAP release. Aborting fallback."
+            exit 1
+          fi
+
+          mkdir -p zap-stable
+          tar -xzf "$ZAP_TAR" -C zap-stable --strip-components=1
+          ls -la zap-stable
+
+          # Start ZAP in daemon mode on a port
+          ZAP_PORT=8090
+          echo "Starting ZAP daemon..."
+          nohup ./zap-stable/zap.sh -daemon -port $ZAP_PORT -host 127.0.0.1 -config api.disablekey=true > zap-daemon.log 2>&1 &
+
+          # Wait for ZAP API to be available
+          echo "Waiting for ZAP API to be ready..."
+          for i in $(seq 1 60); do
+            if curl -s "http://127.0.0.1:${ZAP_PORT}/" >/dev/null 2>&1; then
+              echo "ZAP API reachable"
+              break
+            fi
+            echo "Waiting for ZAP startup... ($i/60)"
+            sleep 2
+          done
+
+          # Download zap-baseline.py script (from the official repo)
+          ZAP_BASELINE_URL="https://raw.githubusercontent.com/zaproxy/zaproxy/main/docker/zap-baseline.py"
+          echo "Downloading zap-baseline.py from $ZAP_BASELINE_URL"
+          if ! curl -sSfL "$ZAP_BASELINE_URL" -o zap-baseline.py; then
+            echo "Failed to download zap-baseline.py; attempting alternate location..."
+            # alternate common path
+            ALT_URL="https://raw.githubusercontent.com/zaproxy/zap-baseline/master/zap-baseline.py"
+            if ! curl -sSfL "$ALT_URL" -o zap-baseline.py; then
+              echo "Cannot obtain zap-baseline.py. Aborting."
+              exit 1
+            fi
+          fi
+          chmod +x zap-baseline.py
+
+          echo "Running zap-baseline.py against ${TARGET_URL} (via local ZAP daemon port ${ZAP_PORT})"
+          # Use the local ZAP daemon (proxy) to run baseline; the script accepts -p to set port (if supported)
+          python3 zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -p ${ZAP_PORT} -q || true
+
+      - name: Locate ZAP reports
+        run: |
+          echo "Searching for ZAP report files..."
           find . -type f \( -iname '*zap*report*.html' -o -iname '*zap*report*.json' -o -iname '*baseline*.html' -o -iname '*baseline*.json' \) -maxdepth 6 -print || true
 
       - name: Upload ZAP HTML report(s)
