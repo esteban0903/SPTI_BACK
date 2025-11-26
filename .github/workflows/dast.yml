@@ -37,12 +37,11 @@ jobs:
           exit 1
 
       - name: Run OWASP ZAP baseline scan (GitHub Action)
-        # Use the zaproxy action which avoids docker pull issues on hosted runners
-        uses: zaproxy/action-baseline-scan@v1
+        # Use a specific, existing tag of the zaproxy action
+        uses: zaproxy/action-baseline-scan@v0.4.0
         with:
           target: ${{ secrets.DAST_TARGET_URL }}
-          # opcionales:
-          # failThreshold: 'High'   # la action puede fallar según umbral, pero dejamos el manejo manual abajo
+          format: 'json'   # pedir salida JSON además del HTML si la action lo soporta
 
       - name: Locate ZAP reports (if any)
         run: |
@@ -67,11 +66,9 @@ jobs:
 
       - name: Fail if high/critical alerts found
         run: |
-          # Find a JSON report produced by ZAP (first match)
           json_file=$(find . -type f \( -iname '*zap*report*.json' -o -iname '*baseline*.json' \) -print -quit || true)
           if [ -n "$json_file" ] && [ -f "$json_file" ]; then
             echo "Using JSON report: $json_file"
-            # Count High or Critical alerts (field names used by zap baseline JSON)
             high_count=$(jq '[.site[]?.alerts[]? | select(.risk == "High" or .risk == "Critical")] | length' "$json_file" || echo "0")
             echo "High/Critical alerts: $high_count"
             if [ "$high_count" -gt 0 ]; then
