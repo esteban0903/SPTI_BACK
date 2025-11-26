@@ -1,0 +1,62 @@
+# Dynamic Application Security Testing (DAST) using OWASP ZAP
+# Uses the secret DAST_TARGET_URL to determine the target to scan.
+# Place this file at .github/workflows/dast.yml
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  dast:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_URL: ${{ secrets.DAST_TARGET_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify target is reachable
+        run: |
+          echo "Checking target reachability..."
+          for i in $(seq 1 10); do
+            if curl -sSf "${TARGET_URL}" >/dev/null 2>&1; then
+              echo "Target is reachable"
+              exit 0
+            fi
+            echo "Waiting for target... ($i/10)"
+            sleep 3
+          done
+          echo "Target ${TARGET_URL} not reachable"
+          exit 1
+
+      - name: Run OWASP ZAP baseline scan (container)
+        run: |
+          docker run --rm -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable \
+            zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q
+
+      - name: Upload ZAP HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-html-report
+          path: zap_baseline_report.html
+
+      - name: Upload ZAP JSON report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-json-report
+          path: zap_baseline_report.json
+
+      - name: Fail if high/critical alerts found
+        run: |
+          if [ -f zap_baseline_report.json ]; then
+            high_count=$(jq '[.site[]?.alerts[]? | select(.risk == "High" or .risk == "Critical")] | length' zap_baseline_report.json)
+            echo "High/Critical alerts: $high_count"
+            if [ "$high_count" -gt 0 ]; then
+              echo "Failing build because of High/Critical DAST alerts"
+              exit 1
+            fi
+          else
+            echo "No JSON report found, skipping threshold check"
+          fi
