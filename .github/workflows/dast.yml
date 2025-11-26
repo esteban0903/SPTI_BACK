@@ -1,6 +1,3 @@
-# DAST workflow: intenta docker (con login si proporcionas DOCKERHUB_USERNAME/DOCKERHUB_TOKEN)
-# y si falla hace fallback descargando ZAP standalone desde GitHub Releases y ejecutando el baseline.
-# Coloca este archivo en .github/workflows/dast.yml
 name: DAST
 
 on:
@@ -54,36 +51,28 @@ jobs:
           GHCR_IMAGE="ghcr.io/zaproxy/zap2docker-stable:latest"
           ZAP_IMAGE=""
 
-          echo "DEBUG: DOCKERHUB_USERNAME set? -> ${DOCKERHUB_USERNAME:+yes}${DOCKERHUB_USERNAME:-no}"
           echo "Attempt Docker Hub login if credentials present..."
           if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "Logging in to Docker Hub..."
             echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin || true
           else
             echo "No Docker Hub credentials provided; attempting anonymous pull (may fail due to rate limits)."
           fi
 
-          echo "Attempting to pull ${DOCKER_IMAGE} ..."
           if docker pull "${DOCKER_IMAGE}" >/dev/null 2>&1; then
             ZAP_IMAGE="${DOCKER_IMAGE}"
             echo "Pulled ${DOCKER_IMAGE}"
+          elif docker pull "${GHCR_IMAGE}" >/dev/null 2>&1; then
+            ZAP_IMAGE="${GHCR_IMAGE}"
+            echo "Pulled ${GHCR_IMAGE}"
           else
-            echo "Failed to pull ${DOCKER_IMAGE}, trying GHCR fallback ${GHCR_IMAGE} ..."
-            if docker pull "${GHCR_IMAGE}" >/dev/null 2>&1; then
-              ZAP_IMAGE="${GHCR_IMAGE}"
-              echo "Pulled ${GHCR_IMAGE}"
-            else
-              echo "Could not pull docker images (Docker Hub nor GHCR). Will fallback to standalone ZAP download."
-            fi
+            echo "Could not pull docker images (Docker Hub nor GHCR). Will fallback to standalone ZAP download."
           fi
 
           if [ -n "${ZAP_IMAGE}" ]; then
             echo "ZAP_IMAGE=${ZAP_IMAGE}" >> "$GITHUB_ENV"
             echo "pulled=true" >> "$GITHUB_OUTPUT"
-            echo "Pulled image: ${ZAP_IMAGE}"
           else
             echo "pulled=false" >> "$GITHUB_OUTPUT"
-            echo "No image pulled"
           fi
 
       - name: Debug: show pull_docker outputs
@@ -93,7 +82,7 @@ jobs:
           echo "pulled: ${{ steps.pull_docker.outputs.pulled }}"
 
       - name: Run ZAP via Docker if available
-        if: steps.pull_docker.outputs.pulled == 'true'
+        if: ${{ steps.pull_docker.outputs.pulled == 'true' }}
         run: |
           set -euo pipefail
           echo "Running ZAP baseline via Docker image: $ZAP_IMAGE"
@@ -101,7 +90,7 @@ jobs:
             zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q || true
 
       - name: Fallback: Download and run standalone ZAP (if Docker pull not available)
-        if: steps.pull_docker.outputs.pulled == 'false'
+        if: ${{ steps.pull_docker.outputs.pulled == 'false' }}
         run: |
           set -euo pipefail
           echo "Docker image not available, attempting standalone ZAP download + baseline run"
@@ -118,7 +107,6 @@ jobs:
 
           mkdir -p zap-stable
           tar -xzf "$ZAP_TAR" -C zap-stable --strip-components=1
-          ls -la zap-stable
 
           ZAP_PORT=8090
           echo "Starting ZAP daemon..."
@@ -130,12 +118,10 @@ jobs:
               echo "ZAP API reachable"
               break
             fi
-            echo "Waiting for ZAP startup... ($i/60)"
             sleep 2
           done
 
           ZAP_BASELINE_URL="https://raw.githubusercontent.com/zaproxy/zaproxy/main/docker/zap-baseline.py"
-          echo "Downloading zap-baseline.py from $ZAP_BASELINE_URL"
           if ! curl -sSfL "$ZAP_BASELINE_URL" -o zap-baseline.py; then
             ALT_URL="https://raw.githubusercontent.com/zaproxy/zap-baseline/master/zap-baseline.py"
             if ! curl -sSfL "$ALT_URL" -o zap-baseline.py; then
@@ -145,17 +131,14 @@ jobs:
           fi
           chmod +x zap-baseline.py
 
-          echo "Running zap-baseline.py against ${TARGET_URL} (via local ZAP daemon port ${ZAP_PORT})"
           python3 zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -p ${ZAP_PORT} -q || true
 
       - name: Locate ZAP reports
         run: |
-          echo "Searching for ZAP report files..."
           find . -type f \( -iname '*zap*report*.html' -o -iname '*zap*report*.json' -o -iname '*baseline*.html' -o -iname '*baseline*.json' \) -maxdepth 6 -print || true
 
       - name: Ensure artifact files exist (create diagnostics if none)
         run: |
-          # If ZAP didn't produce reports, create a small diagnostic file so we always upload something
           if ! ls **/*zap*report*.json 2>/dev/null && ! ls **/*baseline*.json 2>/dev/null; then
             echo "No JSON report found. Creating diagnostic file." > status_no_report.txt
             echo "Check logs for errors and verify Docker/Download step." >> status_no_report.txt
@@ -189,11 +172,9 @@ jobs:
           set -euo pipefail
           json_file=$(find . -type f \( -iname '*zap*report*.json' -o -iname '*baseline*.json' \) -print -quit || true)
           if [ -n "$json_file" ] && [ -f "$json_file" ]; then
-            echo "Using JSON report: $json_file"
             high_count=$(jq '[.site[]?.alerts[]? | select((.risk // "") == "High" or (.risk // "") == "Critical")] | length' "$json_file" 2>/dev/null || echo "0")
             echo "High/Critical alerts: $high_count"
             if [ "$high_count" -gt 0 ]; then
-              echo "Failing build because of High/Critical DAST alerts"
               exit 1
             fi
           else
