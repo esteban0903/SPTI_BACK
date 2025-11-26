@@ -1,6 +1,6 @@
-# Dynamic Application Security Testing (DAST) using OWASP ZAP (Action)
+# Dynamic Application Security Testing (DAST) using OWASP ZAP (Docker fallback)
 # Uses the secret DAST_TARGET_URL to determine the target to scan.
-# Place this file at .github/workflows/dast.yml
+# Optionally uses DOCKERHUB_USERNAME and DOCKERHUB_TOKEN if Docker Hub requires auth.
 on:
   push:
     branches: [ main ]
@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TARGET_URL: ${{ secrets.DAST_TARGET_URL }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,16 +38,58 @@ jobs:
           echo "Target ${TARGET_URL} not reachable"
           exit 1
 
-      - name: Run OWASP ZAP baseline scan (GitHub Action)
-        # Use a specific, existing tag of the zaproxy action
-        uses: zaproxy/action-baseline-scan@v0.4.0
-        with:
-          target: ${{ secrets.DAST_TARGET_URL }}
-          format: 'json'   # pedir salida JSON además del HTML si la action lo soporta
+      - name: Pull ZAP image (try GHCR then Docker Hub, optional login)
+        run: |
+          set -euo pipefail
+          IMAGES="ghcr.io/zaproxy/zap2docker-stable:latest owasp/zap2docker-stable:latest"
+          export ZAP_IMAGE=""
+          for IMG in $IMAGES; do
+            echo "Trying docker pull $IMG ..."
+            if docker pull "$IMG"; then
+              export ZAP_IMAGE="$IMG"
+              echo "Pulled $IMG"
+              break
+            else
+              echo "Failed to pull $IMG"
+            fi
+          done
+
+          # If pull failed and DockerHub creds are provided, try login then pull again
+          if [ -z "$ZAP_IMAGE" ] && [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            echo "Attempting Docker Hub login and retry..."
+            echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            for IMG in $IMAGES; do
+              echo "Retrying docker pull $IMG ..."
+              if docker pull "$IMG"; then
+                export ZAP_IMAGE="$IMG"
+                echo "Pulled $IMG after login"
+                break
+              else
+                echo "Failed to pull $IMG even after login"
+              fi
+            done
+          fi
+
+          if [ -z "$ZAP_IMAGE" ]; then
+            echo "ERROR: Could not pull any ZAP image (tried: $IMAGES)."
+            echo "If you are hitting Docker Hub rate limits, create DOCKERHUB_USERNAME & DOCKERHUB_TOKEN secrets or use a self-hosted runner."
+            exit 1
+          fi
+
+          echo "ZAP image to use: $ZAP_IMAGE"
+          echo "ZAP_IMAGE=$ZAP_IMAGE" >> $GITHUB_ENV
+
+      - name: Run OWASP ZAP baseline scan (container)
+        run: |
+          set -euo pipefail
+          echo "Running ZAP baseline with image: $ZAP_IMAGE"
+          docker run --rm -v "$(pwd)":/zap/wrk/:rw -t "$ZAP_IMAGE" \
+            zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q || true
+          # allow failure of zap command itself (we'll check reports), but continue to upload artifacts
 
       - name: Locate ZAP reports (if any)
         run: |
-          echo "Searching for likely ZAP report files..."
+          echo "Searching for ZAP report files..."
           find . -type f \( -iname '*zap*report*.html' -o -iname '*zap*report*.json' -o -iname '*baseline*.html' -o -iname '*baseline*.json' \) -maxdepth 6 -print || true
 
       - name: Upload ZAP HTML report(s)
@@ -66,10 +110,11 @@ jobs:
 
       - name: Fail if high/critical alerts found
         run: |
+          set -euo pipefail
           json_file=$(find . -type f \( -iname '*zap*report*.json' -o -iname '*baseline*.json' \) -print -quit || true)
           if [ -n "$json_file" ] && [ -f "$json_file" ]; then
             echo "Using JSON report: $json_file"
-            high_count=$(jq '[.site[]?.alerts[]? | select(.risk == "High" or .risk == "Critical")] | length' "$json_file" || echo "0")
+            high_count=$(jq '[.site[]?.alerts[]? | select((.risk // "") == "High" or (.risk // "") == "Critical")] | length' "$json_file" || echo "0")
             echo "High/Critical alerts: $high_count"
             if [ "$high_count" -gt 0 ]; then
               echo "Failing build because of High/Critical DAST alerts"
