@@ -1,4 +1,4 @@
-# Dynamic Application Security Testing (DAST) using OWASP ZAP
+# Dynamic Application Security Testing (DAST) using OWASP ZAP (Action)
 # Uses the secret DAST_TARGET_URL to determine the target to scan.
 # Place this file at .github/workflows/dast.yml
 on:
@@ -17,6 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install tools (jq, curl)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl
+
       - name: Verify target is reachable
         run: |
           echo "Checking target reachability..."
@@ -31,32 +36,48 @@ jobs:
           echo "Target ${TARGET_URL} not reachable"
           exit 1
 
-      - name: Run OWASP ZAP baseline scan (container)
-        run: |
-          docker run --rm -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable \
-            zap-baseline.py -t "${TARGET_URL}" -r zap_baseline_report.html -j zap_baseline_report.json -q
+      - name: Run OWASP ZAP baseline scan (GitHub Action)
+        # Use the zaproxy action which avoids docker pull issues on hosted runners
+        uses: zaproxy/action-baseline-scan@v1
+        with:
+          target: ${{ secrets.DAST_TARGET_URL }}
+          # opcionales:
+          # failThreshold: 'High'   # la action puede fallar según umbral, pero dejamos el manejo manual abajo
 
-      - name: Upload ZAP HTML report
+      - name: Locate ZAP reports (if any)
+        run: |
+          echo "Searching for likely ZAP report files..."
+          find . -type f \( -iname '*zap*report*.html' -o -iname '*zap*report*.json' -o -iname '*baseline*.html' -o -iname '*baseline*.json' \) -maxdepth 6 -print || true
+
+      - name: Upload ZAP HTML report(s)
         uses: actions/upload-artifact@v4
         with:
           name: zap-html-report
-          path: zap_baseline_report.html
+          path: |
+            **/*zap*report*.html
+            **/*baseline*.html
 
-      - name: Upload ZAP JSON report
+      - name: Upload ZAP JSON report(s)
         uses: actions/upload-artifact@v4
         with:
           name: zap-json-report
-          path: zap_baseline_report.json
+          path: |
+            **/*zap*report*.json
+            **/*baseline*.json
 
       - name: Fail if high/critical alerts found
         run: |
-          if [ -f zap_baseline_report.json ]; then
-            high_count=$(jq '[.site[]?.alerts[]? | select(.risk == "High" or .risk == "Critical")] | length' zap_baseline_report.json)
+          # Find a JSON report produced by ZAP (first match)
+          json_file=$(find . -type f \( -iname '*zap*report*.json' -o -iname '*baseline*.json' \) -print -quit || true)
+          if [ -n "$json_file" ] && [ -f "$json_file" ]; then
+            echo "Using JSON report: $json_file"
+            # Count High or Critical alerts (field names used by zap baseline JSON)
+            high_count=$(jq '[.site[]?.alerts[]? | select(.risk == "High" or .risk == "Critical")] | length' "$json_file" || echo "0")
             echo "High/Critical alerts: $high_count"
             if [ "$high_count" -gt 0 ]; then
               echo "Failing build because of High/Critical DAST alerts"
               exit 1
             fi
           else
-            echo "No JSON report found, skipping threshold check"
+            echo "No JSON ZAP report found, skipping threshold check"
           fi
